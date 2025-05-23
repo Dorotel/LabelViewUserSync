@@ -77,41 +77,179 @@ public partial class MainForm : Form
 
     private void ResetAllLabelFileVersionsTo1_0()
     {
-        // Helper to rename .lbl files in a directory tree
-        void RenameLblFilesInDirectory(string rootDir)
+        // Helper to rename .lbl files in a directory tree for Shipping
+        void RenameShippingLblFilesInDirectory(
+            string rootDir,
+            List<string> openSkipped,
+            ref int versionSkipped,
+            ref int successCount)
         {
-            if (!Directory.Exists(rootDir))
+            var shippingDir = Path.Combine(rootDir, "Shipping");
+            if (!Directory.Exists(shippingDir))
                 return;
 
-            foreach (var file in Directory.GetFiles(rootDir, "*.lbl", SearchOption.AllDirectories))
+            foreach (var file in Directory.GetFiles(shippingDir, "*.lbl", SearchOption.AllDirectories))
             {
                 var dir = Path.GetDirectoryName(file)!;
                 var name = Path.GetFileNameWithoutExtension(file);
                 var ext = Path.GetExtension(file);
 
-                // If already ends with "Ver. 1.0", skip
-                if (name.EndsWith("Ver. 1.0", StringComparison.OrdinalIgnoreCase))
-                    continue;
+                // Check for "Ver. X.X" or "Ver X.X" at the end (with or without dot)
+                var verMatch = System.Text.RegularExpressions.Regex.Match(
+                    name, @"\s*Ver\.?\s*(\d+)(\.\d+)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                if (verMatch.Success)
+                {
+                    // If version is 1.0 or higher, skip and count
+                    if (double.TryParse($"{verMatch.Groups[1].Value}{verMatch.Groups[2].Value}", out double verNum) && verNum >= 1.0)
+                    {
+                        versionSkipped++;
+                        continue;
+                    }
+                }
 
                 // Remove any existing "Ver. X.X" at the end (optional, for true reset)
                 var newName = System.Text.RegularExpressions.Regex.Replace(
-                    name, @"\s*Ver\.\s*\d+(\.\d+)?$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    name, @"\s*Ver\.?\s*\d+(\.\d+)?$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
                 newName = $"{newName} Ver. 1.0{ext}";
                 var newPath = Path.Combine(dir, newName);
 
                 // Avoid overwriting existing files
-                if (!File.Exists(newPath)) File.Move(file, newPath);
+                if (File.Exists(newPath)) continue;
+
+                // Try to move, skip if file is in use or access denied
+                try
+                {
+                    using (var fs = new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                    {
+                        // If we can open for read/write with no sharing, it's not in use
+                    }
+                    File.Move(file, newPath);
+                    successCount++;
+                }
+                catch (IOException)
+                {
+                    openSkipped.Add(file);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    openSkipped.Add(file);
+                }
+            }
+            // Delete .bak files in Shipping
+            foreach (var bakFile in Directory.GetFiles(shippingDir, "*.bak", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    File.Delete(bakFile);
+                }
+                catch
+                {
+                    // Ignore errors for .bak deletes
+                }
             }
         }
 
-        // Rename in master folder (including subfolders)
-        RenameLblFilesInDirectory(masterFolder);
+        // Helper to remove "Ver" part from Receiving and Misc files and delete .bak files
+        void RemoveVerFromReceivingAndMisc(
+            string rootDir,
+            List<string> openSkipped,
+            ref int verRemovedCount)
+        {
+            foreach (var folder in new[] { "Receiving", "Misc" })
+            {
+                var targetDir = Path.Combine(rootDir, folder);
+                if (!Directory.Exists(targetDir))
+                    continue;
 
-        // Rename in all employee folders
+                foreach (var file in Directory.GetFiles(targetDir, "*.lbl", SearchOption.AllDirectories))
+                {
+                    var dir = Path.GetDirectoryName(file)!;
+                    var name = Path.GetFileNameWithoutExtension(file);
+                    var ext = Path.GetExtension(file);
+
+                    // Check for "Ver. X.X" or "Ver X.X" at the end (with or without dot)
+                    var verMatch = System.Text.RegularExpressions.Regex.Match(
+                        name, @"\s*Ver\.?\s*(\d+)(\.\d+)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                    if (!verMatch.Success)
+                        continue; // No Ver part, nothing to remove
+
+                    // Remove the "Ver" part
+                    var newName = System.Text.RegularExpressions.Regex.Replace(
+                        name, @"\s*Ver\.?\s*\d+(\.\d+)?$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                    var newPath = Path.Combine(dir, newName + ext);
+
+                    // Avoid overwriting existing files
+                    if (File.Exists(newPath)) continue;
+
+                    try
+                    {
+                        using (var fs = new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                        {
+                            // If we can open for read/write with no sharing, it's not in use
+                        }
+                        File.Move(file, newPath);
+                        verRemovedCount++;
+                    }
+                    catch (IOException)
+                    {
+                        openSkipped.Add(file);
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        openSkipped.Add(file);
+                    }
+                }
+                // Delete .bak files in Receiving/Misc
+                foreach (var bakFile in Directory.GetFiles(targetDir, "*.bak", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        File.Delete(bakFile);
+                    }
+                    catch
+                    {
+                        // Ignore errors for .bak deletes
+                    }
+                }
+            }
+        }
+
+        var openSkipped = new List<string>();
+        int versionSkipped = 0;
+        int successCount = 0;
+        int verRemovedCount = 0;
+
+        // Master folder
+        RenameShippingLblFilesInDirectory(masterFolder, openSkipped, ref versionSkipped, ref successCount);
+        RemoveVerFromReceivingAndMisc(masterFolder, openSkipped, ref verRemovedCount);
+
+        // All employee folders
         if (Directory.Exists(employeeFolderRoot))
+        {
             foreach (var userDir in Directory.GetDirectories(employeeFolderRoot))
-                RenameLblFilesInDirectory(userDir);
+            {
+                RenameShippingLblFilesInDirectory(userDir, openSkipped, ref versionSkipped, ref successCount);
+                RemoveVerFromReceivingAndMisc(userDir, openSkipped, ref verRemovedCount);
+            }
+        }
+
+        // Build report
+        var report = new System.Text.StringBuilder();
+        report.AppendLine($"Total Shipping files successfully renamed: {successCount}");
+        report.AppendLine($"Total Shipping files skipped (already Ver 1.0 or newer): {versionSkipped}");
+        report.AppendLine($"Total Receiving/Misc files with 'Ver' removed: {verRemovedCount}");
+        report.AppendLine();
+        report.AppendLine("Files skipped because they are open or access denied:");
+        if (openSkipped.Count == 0)
+            report.AppendLine("  (none)");
+        else
+            report.AppendLine(string.Join("\r\n", openSkipped));
+
+        textBoxReport.Text = report.ToString();
     }
 
     private List<UserSettings> LoadAllUserSettings()
