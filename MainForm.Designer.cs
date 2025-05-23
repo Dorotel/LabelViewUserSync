@@ -51,6 +51,7 @@
             checkBoxStatusReceiving = new CheckBox();
             checkBoxStatusMisc = new CheckBox();
             buttonUpdateUserSettings = new Button();
+            buttonResetLabelVersion = new Button();
             groupBoxNewUser.SuspendLayout();
             groupBoxUpdateUser.SuspendLayout();
             SuspendLayout();
@@ -247,9 +248,19 @@
             buttonUpdateUserSettings.Text = "Update Settings for Selected User";
             buttonUpdateUserSettings.Click += buttonUpdateUserSettings_Click;
             // 
+            // buttonResetLabelVersion
+            // 
+            buttonResetLabelVersion.Location = new Point(20, 478);
+            buttonResetLabelVersion.Name = "buttonResetLabelVersion";
+            buttonResetLabelVersion.Size = new Size(360, 30);
+            buttonResetLabelVersion.TabIndex = 8;
+            buttonResetLabelVersion.Text = "Reset all Labels to Version 1.0";
+            buttonResetLabelVersion.Click += buttonResetLabelVersion_Click;
+            // 
             // MainForm
             // 
-            ClientSize = new Size(400, 486);
+            ClientSize = new Size(400, 513);
+            Controls.Add(buttonResetLabelVersion);
             Controls.Add(buttonUpdateUserSettings);
             Controls.Add(comboBoxUsers);
             Controls.Add(buttonSync);
@@ -268,5 +279,6 @@
             ResumeLayout(false);
             PerformLayout();
         }
+        private Button buttonResetLabelVersion;
     }
 }
