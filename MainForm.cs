@@ -7,29 +7,35 @@ public partial class MainForm : Form
     private readonly string employeeFolderRoot = @"X:\Shipping\Labels - Labelview\Employee Folder";
     private readonly string settingsFolder = @"X:\Shipping\Labels - Labelview\SyncFiles";
     private string UsersJsonPath => Path.Combine(settingsFolder, "users.json");
-    private string LocalSettingsPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LabelViewUserSync", "openlabelsettings.json");
+    private static string LocalSettingsPath => Path.Combine(
+       Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+       "LabelViewUserSync",
+       "openlabelsettings.json"
+   );
     private class OpenLabelSettings { public string? LastUserFolder { get; set; } }
     public class UserSettings { public string UserName { get; set; } = ""; public bool UsesShipping { get; set; } public bool UsesReceiving { get; set; } public bool UsesMisc { get; set; } }
+
+
     public MainForm()
     {
         InitializeComponent();
-        var lvProcesses = Process.GetProcessesByName("LV");
-        if (lvProcesses.Length > 0)
-        {
-            var result = MessageBox.Show("LabelView (LV.exe) is currently running. All instances will be closed. Please save your work before continuing.\n\nDo you want to close all LV.exe processes now?", "Close LabelView", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-            if (result == DialogResult.Yes)
-            {
-                foreach (var proc in lvProcesses)
-                    try { proc.Kill(); proc.WaitForExit(5000); }
-                    catch (Exception ex) { MessageBox.Show($"Could not close process ID {proc.Id}: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
-            }
-            else { Close(); return; }
-        }
+
         buttonUpdateUserSettings.Enabled = comboBoxUsers.SelectedItem is string && !string.IsNullOrWhiteSpace(comboBoxUsers.SelectedItem.ToString());
         if (!File.Exists(UsersJsonPath))
         {
-            var userFolders = Directory.GetDirectories(employeeFolderRoot).Select(Path.GetFileName).Where(n => !string.IsNullOrEmpty(n)).OrderBy(n => n).ToList();
-            var users = userFolders.Select(name => new UserSettings { UserName = name, UsesShipping = Directory.Exists(Path.Combine(employeeFolderRoot, name, "Shipping")), UsesReceiving = Directory.Exists(Path.Combine(employeeFolderRoot, name, "Receiving")), UsesMisc = Directory.Exists(Path.Combine(employeeFolderRoot, name, "Misc")) }).ToList();
+            var userFolders = Directory.GetDirectories(employeeFolderRoot)
+                .Select(Path.GetFileName)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .OrderBy(n => n)
+                .ToList();
+
+            var users = userFolders.Select(name => new UserSettings
+            {
+                UserName = name ?? string.Empty, // Ensure non-null value
+                UsesShipping = name != null && Directory.Exists(Path.Combine(employeeFolderRoot, name, "Shipping")),
+                UsesReceiving = name != null && Directory.Exists(Path.Combine(employeeFolderRoot, name, "Receiving")),
+                UsesMisc = name != null && Directory.Exists(Path.Combine(employeeFolderRoot, name, "Misc"))
+            }).ToList();
             SaveAllUserSettings(users);
         }
         PopulateOpenLabelTab();
@@ -38,6 +44,14 @@ public partial class MainForm : Form
         comboBoxUpdateUser.SelectedIndexChanged += comboBoxUpdateUser_SelectedIndexChanged;
         UpdateStatusCheckboxes();
         UpdateUpdateUserCheckboxes();
+    }
+    private static string? ExtractLabelVersion(string fileName)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(
+            Path.GetFileNameWithoutExtension(fileName),
+            @"Ver\.?\s*(\d+(\.\d+)?)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[1].Value.Trim() : null;
     }
     private void SaveOpenLabelSettings(string? userFolder)
     {
@@ -108,7 +122,7 @@ public partial class MainForm : Form
     private void comboBoxUsers_SelectedIndexChanged(object? sender, EventArgs e)
     {
         UpdateStatusCheckboxes();
-        buttonUpdateUserSettings.Enabled = comboBoxUsers.SelectedItem is string && !string.IsNullOrWhiteSpace(comboBoxUsers.SelectedItem.ToString());
+        buttonUpdateUserSettings.Enabled = comboBoxUsers.SelectedItem is string userName && !string.IsNullOrWhiteSpace(userName);
     }
     private void comboBoxUpdateUser_SelectedIndexChanged(object? sender, EventArgs e)
     {
@@ -116,7 +130,7 @@ public partial class MainForm : Form
     }
     private void UpdateStatusCheckboxes()
     {
-        if (comboBoxUsers.SelectedItem is string userName)
+        if (comboBoxUsers.SelectedItem is string userName && !string.IsNullOrWhiteSpace(userName))
         {
             var settings = LoadUserSettings(userName);
             checkBoxStatusShipping.Checked = settings?.UsesShipping ?? false;
@@ -132,7 +146,7 @@ public partial class MainForm : Form
     }
     private void UpdateUpdateUserCheckboxes()
     {
-        if (comboBoxUpdateUser.SelectedItem is string userName)
+        if (comboBoxUpdateUser.SelectedItem is string userName && !string.IsNullOrWhiteSpace(userName))
         {
             var settings = LoadUserSettings(userName);
             checkBoxUpdateShipping.Checked = settings?.UsesShipping ?? false;
@@ -277,6 +291,7 @@ public partial class MainForm : Form
             MessageBox.Show("Please select a user first.", "No User Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
+
         var csIniPath = @"C:\ProgramData\Teklynx\LABELVIEW\Cs.ini";
         var newUserPath = $@"X:\Shipping\Labels - Labelview\Employee Folder\{userName}\LabelView Folders\Settings\";
         var userIniPath = Path.Combine(employeeFolderRoot, userName, "LabelView Folders", "Settings", "User.ini");
@@ -288,11 +303,37 @@ public partial class MainForm : Form
                     userPrinter = line.Substring(line.IndexOf('=') + 1).Trim();
                     break;
                 }
+
+        // Preview changes to Cs.ini
+        List<string> lines = new();
+        if (File.Exists(csIniPath))
+            lines = File.ReadAllLines(csIniPath).ToList();
+
+        string? oldUserLine = lines.FirstOrDefault(l => l.TrimStart().StartsWith("User=", StringComparison.OrdinalIgnoreCase));
+        string? oldPrinterLine = lines.FirstOrDefault(l => l.TrimStart().StartsWith("Printer=", StringComparison.OrdinalIgnoreCase));
+        string preview =
+            $"The following changes will be made to Cs.ini:\r\n\r\n" +
+            $"User line:\r\n" +
+            $"  Old: {oldUserLine ?? "(none)"}\r\n" +
+            $"  New: User={newUserPath}\r\n";
+        if (!string.IsNullOrWhiteSpace(userPrinter))
+        {
+            preview += $"Printer line:\r\n" +
+                       $"  Old: {oldPrinterLine ?? "(none)"}\r\n" +
+                       $"  New: Printer={userPrinter}\r\n";
+        }
+        preview += "\r\nDo you want to proceed with updating Cs.ini?";
+
+        var result = MessageBox.Show(preview, "Cs.ini Update Preview", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (result != DialogResult.Yes)
+        {
+            textBoxReport.Text = "Cs.ini update canceled by user.";
+            return;
+        }
+
         try
         {
-            List<string> lines = new();
-            if (File.Exists(csIniPath)) lines = File.ReadAllLines(csIniPath).ToList();
-            var userLineFound = false;
+            bool userLineFound = false;
             for (var i = 0; i < lines.Count; i++)
                 if (lines[i].TrimStart().StartsWith("User=", StringComparison.OrdinalIgnoreCase))
                 {
@@ -301,9 +342,10 @@ public partial class MainForm : Form
                     break;
                 }
             if (!userLineFound) lines.Add($"User={newUserPath}");
+
             if (!string.IsNullOrWhiteSpace(userPrinter))
             {
-                var printerLineFound = false;
+                bool printerLineFound = false;
                 for (var i = 0; i < lines.Count; i++)
                     if (lines[i].TrimStart().StartsWith("Printer=", StringComparison.OrdinalIgnoreCase))
                     {
@@ -314,15 +356,67 @@ public partial class MainForm : Form
                 if (!printerLineFound) lines.Add($"Printer={userPrinter}");
             }
             File.WriteAllLines(csIniPath, lines);
+
+            textBoxReport.Text =
+                "Cs.ini updated successfully.\r\n\r\n" +
+                $"User line set to: User={newUserPath}\r\n" +
+                (!string.IsNullOrWhiteSpace(userPrinter) ? $"Printer line set to: Printer={userPrinter}\r\n" : "");
             MessageBox.Show("Cs.ini updated successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
+            textBoxReport.Text = $"Failed to update Cs.ini: {ex.Message}";
             MessageBox.Show($"Failed to update Cs.ini: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
     private void buttonSync_Click(object sender, EventArgs e)
     {
+        // Check if Shift key is held down
+        bool shiftHeld = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
+
+        if (shiftHeld)
+        {
+            // Run for all users in comboBoxUsers
+            var userNames = comboBoxUsers.Items.Cast<string>().Where(u => !string.IsNullOrWhiteSpace(u)).ToList();
+            if (userNames.Count == 0)
+            {
+                MessageBox.Show("No users found.", "No Users", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            int successCount = 0;
+            var errors = new List<string>();
+            foreach (var name in userNames)
+            {
+                var userFolderPath = Path.Combine(employeeFolderRoot, name); // Renamed variable to avoid conflict
+
+                // Prompt for each user
+                var promptMsg = $"Sync files for user '{name}'?\r\n\r\nUser folder:\r\n{userFolderPath}\r\n\r\nProceed?";
+                var userResult = MessageBox.Show(promptMsg, $"Sync User: {name}", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (userResult != DialogResult.Yes)
+                {
+                    errors.Add($"{name}: Skipped by user.");
+                    continue;
+                }
+
+                try
+                {
+                    var syncedFiles = SyncUserFolder(userFolderPath, masterFolder); // Updated variable name here
+                    successCount++;
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{name}: {ex.Message}");
+                }
+            }
+            string msg = $"Sync completed for {successCount} user(s).";
+            if (errors.Count > 0)
+                msg += "\r\nSome errors occurred:\r\n" + string.Join("\r\n", errors);
+            MessageBox.Show(msg, "Batch Sync Complete", MessageBoxButtons.OK, errors.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+            return;
+        }
+
+        // Default: single user
         if (comboBoxUsers.SelectedItem is null)
         {
             MessageBox.Show("Please select a user to sync.", "No User Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -342,7 +436,9 @@ public partial class MainForm : Form
         if (result == DialogResult.Yes)
         {
             var syncedFiles = SyncUserFolder(userFolder, masterFolder);
-            textBoxReport.Text = syncedFiles.Count == 0 ? "No files needed syncing." : "Synced files:\r\n" + string.Join("\r\n", syncedFiles);
+            textBoxReport.Text = syncedFiles.Count == 0
+                ? "No files needed syncing."
+                : "Synced files:\r\n" + string.Join("\r\n", syncedFiles);
         }
         else
         {
@@ -374,19 +470,28 @@ public partial class MainForm : Form
     {
         if (comboBoxOpenLabelUserFolder.SelectedItem is not string userFolder) return;
         SaveOpenLabelSettings(userFolder);
+
+        // Update customer folders as before
         var shippingRoot = Path.Combine(employeeFolderRoot, userFolder, "Shipping");
         comboBoxCustomerFolders.Items.Clear();
         if (Directory.Exists(shippingRoot))
         {
-            var customerFolders = Directory.GetDirectories(shippingRoot).Select(Path.GetFileName).Where(n => !string.IsNullOrEmpty(n)).OrderBy(n => n).ToArray();
-            comboBoxCustomerFolders.Items.AddRange(customerFolders);
+            var customerFolders = Directory.GetDirectories(shippingRoot)
+                .Select(Path.GetFileName)
+                .Where(folder => !string.IsNullOrEmpty(folder))
+                .ToArray();
+            comboBoxCustomerFolders.Items.AddRange(customerFolders.Where(f => f != null).Cast<object>().ToArray());
             if (comboBoxCustomerFolders.Items.Count > 0) comboBoxCustomerFolders.SelectedIndex = 0;
         }
         else { listBoxLblFiles.Items.Clear(); }
+
+        // Update Excel files to use the new Data folder
         listBoxExcelFiles.Items.Clear();
-        if (Directory.Exists(shippingRoot))
+        var dataDir = Path.Combine(employeeFolderRoot, userFolder, "LabelView Folders", "Data");
+        if (Directory.Exists(dataDir))
         {
-            var excelFiles = Directory.GetFiles(shippingRoot, "*.xls*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(shippingRoot, f)).OrderBy(f => f).ToArray();
+            var excelFiles = Directory.GetFiles(dataDir, "*.xls*", SearchOption.AllDirectories)
+                .Select(f => Path.GetRelativePath(dataDir, f)).OrderBy(f => f).ToArray();
             listBoxExcelFiles.Items.AddRange(excelFiles);
         }
     }
@@ -397,8 +502,11 @@ public partial class MainForm : Form
         if (comboBoxCustomerFolders.SelectedItem is not string customerFolder) return;
         var shippingPath = Path.Combine(employeeFolderRoot, userFolder, "Shipping", customerFolder);
         if (!Directory.Exists(shippingPath)) return;
-        var lblFiles = Directory.GetFiles(shippingPath, "*.lbl", SearchOption.AllDirectories);
-        foreach (var file in lblFiles) listBoxLblFiles.Items.Add(Path.GetRelativePath(shippingPath, file));
+        var lblFiles = Directory.GetFiles(shippingPath, "*.lbl", SearchOption.AllDirectories)
+            .Where(f => !f.Split(Path.DirectorySeparatorChar).Contains("Backups") && !f.Split(Path.AltDirectorySeparatorChar).Contains("Backups"))
+            .ToArray();
+        foreach (var file in lblFiles)
+            listBoxLblFiles.Items.Add(Path.GetRelativePath(shippingPath, file));
     }
     private void buttonResetLabelVersion_Click(object sender, EventArgs e)
     {
@@ -426,22 +534,48 @@ public partial class MainForm : Form
         if (listBoxLblFiles.SelectedItem is not string relPath) return;
         var shippingPath = Path.Combine(masterFolder, "Shipping", customerFolder);
         var fullPath = Path.Combine(shippingPath, relPath);
-        if (File.Exists(fullPath)) Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
+        if (File.Exists(fullPath))
+        {
+            Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
+        }
     }
     private void listBoxExcelFiles_DoubleClick(object? sender, EventArgs e) => OpenSelectedExcelFile();
     private void buttonOpenExcel_Click(object? sender, EventArgs e) => OpenSelectedExcelFile();
     private void OpenSelectedExcelFile()
     {
+        if (comboBoxOpenLabelUserFolder.SelectedItem is not string userFolder) return;
         if (listBoxExcelFiles.SelectedItem is not string relPath) return;
-        var shippingPath = Path.Combine(masterFolder, "Shipping");
-        var fullPath = Path.Combine(shippingPath, relPath);
-        if (File.Exists(fullPath)) Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
+        var dataDir = Path.Combine(employeeFolderRoot, userFolder, "LabelView Folders", "Data");
+        var fullPath = Path.Combine(dataDir, relPath);
+        if (File.Exists(fullPath))
+        {
+            var msg =
+                "Please let John Koll know you are editing this Excel file so he can sync your changes with other users.\r\n\r\n" +
+                "This application cannot be open at the same time as Excel. The application will close if you continue.\r\n\r\n" +
+                "Do you want to continue and open the Excel file?";
+            var result = MessageBox.Show(
+                msg,
+                "Excel File Edit Notice",
+                MessageBoxButtons.OKCancel,
+                MessageBoxIcon.Warning
+            );
+            if (result == DialogResult.OK)
+            {
+                Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
+                Close();
+            }
+            // else: do nothing, user cancelled
+        }
     }
     private void PopulateOpenLabelTab()
     {
-        var userFolders = Directory.GetDirectories(employeeFolderRoot).Select(Path.GetFileName).Where(n => !string.IsNullOrEmpty(n)).OrderBy(n => n).ToArray();
+        var userFolders = Directory.GetDirectories(employeeFolderRoot)
+            .Select(Path.GetFileName)
+            .Where(n => !string.IsNullOrEmpty(n))
+            .OrderBy(n => n)
+            .ToArray();
         comboBoxOpenLabelUserFolder.Items.Clear();
-        comboBoxOpenLabelUserFolder.Items.AddRange(userFolders);
+        comboBoxOpenLabelUserFolder.Items.AddRange(userFolders.Cast<object>().ToArray());
         var lastUser = LoadOpenLabelSettings();
         if (lastUser != null && comboBoxOpenLabelUserFolder.Items.Contains(lastUser)) comboBoxOpenLabelUserFolder.SelectedItem = lastUser;
         else if (comboBoxOpenLabelUserFolder.Items.Count > 0) comboBoxOpenLabelUserFolder.SelectedIndex = 0;
@@ -455,21 +589,8 @@ public partial class MainForm : Form
         var keepShipping = settings?.UsesShipping ?? true;
         var keepReceiving = settings?.UsesReceiving ?? true;
         var keepMisc = settings?.UsesMisc ?? true;
-        if (!keepShipping)
-        {
-            var shippingPath = Path.Combine(userFolder, "Shipping");
-            if (Directory.Exists(shippingPath)) Directory.Delete(shippingPath, true);
-        }
-        if (!keepReceiving)
-        {
-            var receivingPath = Path.Combine(userFolder, "Receiving");
-            if (Directory.Exists(receivingPath)) Directory.Delete(receivingPath, true);
-        }
-        if (!keepMisc)
-        {
-            var miscPath = Path.Combine(userFolder, "Misc");
-            if (Directory.Exists(miscPath)) Directory.Delete(miscPath, true);
-        }
+
+        // 1. Sync as before (with backup on overwrite)
         foreach (var folder in new[] { "Shipping", "Receiving", "Misc" })
         {
             var keep = folder switch { "Shipping" => keepShipping, "Receiving" => keepReceiving, "Misc" => keepMisc, _ => false };
@@ -480,26 +601,133 @@ public partial class MainForm : Form
             {
                 if (string.Equals(Path.GetFileName(masterFile), "thumbs.db", StringComparison.OrdinalIgnoreCase)) continue;
                 var relativePath = Path.GetRelativePath(masterFolder, masterFile);
-                if (folder == "Shipping" && (relativePath.StartsWith("Shipping" + Path.DirectorySeparatorChar + "Still Needs Conversion" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || relativePath.StartsWith("Shipping" + Path.AltDirectorySeparatorChar + "Still Needs Conversion" + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || relativePath.Equals("Shipping" + Path.DirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase) || relativePath.Equals("Shipping" + Path.AltDirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase) || relativePath.StartsWith("Shipping" + Path.DirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase) || relativePath.StartsWith("Shipping" + Path.AltDirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase))) continue;
+
+                // Skip "Still Needs Conversion" in Shipping as before
+                if (folder == "Shipping" && (
+                    relativePath.StartsWith("Shipping" + Path.DirectorySeparatorChar + "Still Needs Conversion" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                    relativePath.StartsWith("Shipping" + Path.AltDirectorySeparatorChar + "Still Needs Conversion" + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                    relativePath.Equals("Shipping" + Path.DirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase) ||
+                    relativePath.Equals("Shipping" + Path.AltDirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase) ||
+                    relativePath.StartsWith("Shipping" + Path.DirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase) ||
+                    relativePath.StartsWith("Shipping" + Path.AltDirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
                 var userFile = Path.Combine(userFolder, relativePath);
-                try
+
+                bool needsSync = false;
+                string? reason = null;
+                string? masterVer = null;
+                string? userVer = null;
+
+                if (folder == "Shipping" && Path.GetExtension(masterFile).Equals(".lbl", StringComparison.OrdinalIgnoreCase))
                 {
-                    string reason;
-                    if (!File.Exists(userFile)) { reason = "new file"; }
+                    masterVer = ExtractLabelVersion(masterFile);
+                    userVer = File.Exists(userFile) ? ExtractLabelVersion(userFile) : null;
+                    if (!File.Exists(userFile) || !string.Equals(masterVer, userVer, StringComparison.OrdinalIgnoreCase))
+                    {
+                        needsSync = true;
+                        reason = $"version: {userVer ?? "none"} → {masterVer ?? "none"}";
+                    }
+                }
+                else
+                {
+                    if (!File.Exists(userFile))
+                    {
+                        needsSync = true;
+                        reason = "new file";
+                    }
                     else if (new FileInfo(masterFile).Length != new FileInfo(userFile).Length)
                     {
                         var masterInfo = new FileInfo(masterFile);
                         var userInfo = new FileInfo(userFile);
+                        needsSync = true;
                         reason = $"size: {userInfo.Length} → {masterInfo.Length}, date: {userInfo.LastWriteTime} → {masterInfo.LastWriteTime}";
                     }
-                    else { continue; }
+                }
+
+                if (!needsSync) continue;
+
+                try
+                {
+                    // Backup old file if it exists
+                    if (File.Exists(userFile))
+                    {
+                        var userFileDir = Path.GetDirectoryName(userFile)!;
+                        var backupDir = Path.Combine(userFileDir, "Backups");
+                        Directory.CreateDirectory(backupDir);
+                        var backupFileName = Path.GetFileName(userFile);
+                        var backupFilePath = Path.Combine(backupDir, backupFileName);
+
+                        // If backup file exists, append timestamp
+                        if (File.Exists(backupFilePath))
+                        {
+                            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                            var name = Path.GetFileNameWithoutExtension(backupFileName);
+                            var ext = Path.GetExtension(backupFileName);
+                            backupFilePath = Path.Combine(backupDir, $"{name}_{timestamp}{ext}");
+                        }
+                        File.Copy(userFile, backupFilePath, true);
+                    }
+
                     Directory.CreateDirectory(Path.GetDirectoryName(userFile)!);
                     File.Copy(masterFile, userFile, true);
-                    syncedFiles.Add($"{relativePath} ({reason})");
+
+                    if (folder == "Shipping" && Path.GetExtension(masterFile).Equals(".lbl", StringComparison.OrdinalIgnoreCase))
+                        syncedFiles.Add($"{relativePath} (version: {userVer ?? "none"} → {masterVer ?? "none"})");
+                    else
+                        syncedFiles.Add($"{relativePath} ({reason})");
                 }
-                catch (Exception ex) { errors.Add($"Failed to sync '{relativePath}': {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    errors.Add($"Failed to sync '{relativePath}': {ex.Message}");
+                }
             }
         }
+
+        // 2. Remove (move to Backups) any extra .lbl files in user folder that are not in master
+        var masterLblFiles = new HashSet<string>(
+            Directory.Exists(masterFolder)
+                ? Directory.GetFiles(masterFolder, "*.lbl", SearchOption.AllDirectories)
+                    .Select(f => Path.GetRelativePath(masterFolder, f))
+                : Enumerable.Empty<string>(),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var folder in new[] { "Shipping", "Receiving", "Misc" })
+        {
+            var userSubFolder = Path.Combine(userFolder, folder);
+            if (!Directory.Exists(userSubFolder)) continue;
+            foreach (var userLblFile in Directory.GetFiles(userSubFolder, "*.lbl", SearchOption.AllDirectories))
+            {
+                var relPath = Path.GetRelativePath(userFolder, userLblFile);
+                if (!masterLblFiles.Contains(relPath))
+                {
+                    try
+                    {
+                        var dir = Path.GetDirectoryName(userLblFile)!;
+                        var backupDir = Path.Combine(dir, "Backups");
+                        Directory.CreateDirectory(backupDir);
+                        var backupFileName = Path.GetFileName(userLblFile);
+                        var backupFilePath = Path.Combine(backupDir, backupFileName);
+
+                        // If backup file exists, append timestamp
+                        if (File.Exists(backupFilePath))
+                        {
+                            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                            var name = Path.GetFileNameWithoutExtension(backupFileName);
+                            var ext = Path.GetExtension(backupFileName);
+                            backupFilePath = Path.Combine(backupDir, $"{name}_{timestamp}{ext}");
+                        }
+                        File.Move(userLblFile, backupFilePath);
+                        syncedFiles.Add($"{relPath} (moved to Backups: not in master)");
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"Failed to move extra file '{relPath}': {ex.Message}");
+                    }
+                }
+            }
+        }
+
         if (errors.Count > 0) MessageBox.Show(string.Join(Environment.NewLine, errors), "Sync Errors", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         EnsureUserShortcut(userFolder);
         return syncedFiles;
@@ -524,7 +752,7 @@ public partial class MainForm : Form
                 var relativePath = Path.GetRelativePath(masterFolder, masterFile);
                 if (folder == "Shipping" && (relativePath.StartsWith("Shipping" + Path.DirectorySeparatorChar + "Still Needs Conversion" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || relativePath.StartsWith("Shipping" + Path.AltDirectorySeparatorChar + "Still Needs Conversion" + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || relativePath.Equals("Shipping" + Path.DirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase) || relativePath.Equals("Shipping" + Path.AltDirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase) || relativePath.StartsWith("Shipping" + Path.DirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase) || relativePath.StartsWith("Shipping" + Path.AltDirectorySeparatorChar + "Still Needs Conversion", StringComparison.OrdinalIgnoreCase))) continue;
                 var userFile = Path.Combine(userFolder, relativePath);
-                string reason = null;
+                string? reason = null;
                 if (!File.Exists(userFile)) { reason = "new file"; }
                 else if (new FileInfo(masterFile).Length != new FileInfo(userFile).Length)
                 {
@@ -631,5 +859,206 @@ public partial class MainForm : Form
         if (openSkipped.Count == 0) report.AppendLine("  (none)");
         else report.AppendLine(string.Join("\r\n", openSkipped));
         textBoxReport.Text = report.ToString();
+    }
+
+    private void CopyLabelViewFoldersAndUpdateDataLinks(string userFolder)
+    {
+        var masterLabelView = Path.Combine(masterFolder, "LabelView Folders");
+        var userLabelView = Path.Combine(userFolder, "LabelView Folders");
+        var filesToCopy = new List<string>();
+        var errors = new List<string>();
+
+        // Preview files to be copied/overwritten
+        if (Directory.Exists(masterLabelView))
+        {
+            foreach (var masterFile in Directory.GetFiles(masterLabelView, "*", SearchOption.AllDirectories))
+            {
+                var relativePath = Path.GetRelativePath(masterLabelView, masterFile);
+                var userFile = Path.Combine(userLabelView, relativePath);
+
+                string? reason = null;
+                if (!File.Exists(userFile))
+                {
+                    reason = "new file";
+                }
+                else if (new FileInfo(masterFile).Length != new FileInfo(userFile).Length)
+                {
+                    var masterInfo = new FileInfo(masterFile);
+                    var userInfo = new FileInfo(userFile);
+                    reason = $"size: {userInfo.Length} → {masterInfo.Length}, date: {userInfo.LastWriteTime} → {masterInfo.LastWriteTime}";
+                }
+                else
+                {
+                    continue;
+                }
+                filesToCopy.Add($"{relativePath} ({reason})");
+            }
+        }
+
+        // Prompt user if any files will be copied/overwritten
+        if (filesToCopy.Count == 0)
+        {
+            textBoxReport.Text = "No core files needed updating.";
+            MessageBox.Show("No core files need to be updated.", "Core Files Update Preview", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var previewMsg = "The following files will be overwritten or created:\r\n\r\n" +
+                         string.Join("\r\n", filesToCopy) +
+                         "\r\n\r\nDo you want to proceed with updating core files?";
+        var result = MessageBox.Show(previewMsg, "Core Files Update Preview", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (result != DialogResult.Yes)
+        {
+            textBoxReport.Text = "Core files update canceled by user.";
+            return;
+        }
+
+        // Copy all files from Master LabelView Folders to User's LabelView Folders (overwrite all)
+        if (Directory.Exists(masterLabelView))
+        {
+            try
+            {
+                CopyDirectory(masterLabelView, userLabelView);
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Failed to copy LabelView Folders: {ex.Message}");
+            }
+        }
+
+        // Edit all .udl files in DataLink folder
+        var userName = Path.GetFileName(userFolder);
+        var dataLinkDir = Path.Combine(userLabelView, "DataLink");
+        if (Directory.Exists(dataLinkDir))
+        {
+            foreach (var udlFile in Directory.GetFiles(dataLinkDir, "*.udl", SearchOption.TopDirectoryOnly))
+            {
+                try
+                {
+                    var lines = File.ReadAllLines(udlFile);
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        // Replace any user folder in UNC path with the current userName
+                        lines[i] = System.Text.RegularExpressions.Regex.Replace(
+                            lines[i],
+                            @"(\\\\MTMANU-FS01\\Expo Drive\\Shipping\\Labels - Labelview\\Employee Folder\\)[^\\]+",
+                            $"\\\\MTMANU-FS01\\Expo Drive\\Shipping\\Labels - Labelview\\Employee Folder\\{userName}",
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                        );
+                    }
+                    File.WriteAllLines(udlFile, lines);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Failed to update {Path.GetFileName(udlFile)}: {ex.Message}");
+                }
+            }
+        }
+
+        // Update User.ini default directories
+        var userIniPath = Path.Combine(userLabelView, "Settings", "User.ini");
+        if (File.Exists(userIniPath))
+        {
+            try
+            {
+                var lines = File.ReadAllLines(userIniPath);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    // Replace any Employee Folder user segment in UNC paths with the current userName
+                    lines[i] = System.Text.RegularExpressions.Regex.Replace(
+                        lines[i],
+                        @"(\\\\MTMANU-FS01\\Expo Drive\\Shipping\\Labels - Labelview\\Employee Folder\\)[^\\]+",
+                        $"\\\\MTMANU-FS01\\Expo Drive\\Shipping\\Labels - Labelview\\Employee Folder\\{userName}",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                    );
+                }
+                File.WriteAllLines(userIniPath, lines);
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Failed to update User.ini: {ex.Message}");
+            }
+        }
+
+        // Fill textBoxReport
+        if (errors.Count > 0)
+        {
+            textBoxReport.Text = "Some errors occurred:\r\n" + string.Join("\r\n", errors);
+            MessageBox.Show(string.Join(Environment.NewLine, errors), "Core Files Update Errors", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        else
+        {
+            textBoxReport.Text = filesToCopy.Count == 0
+                ? "No core files needed updating."
+                : "Core files updated:\r\n" + string.Join("\r\n", filesToCopy);
+            MessageBox.Show("Core files and DataLinks updated successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+    }
+
+    private void buttonUpdateCoreFiles_Click(object sender, EventArgs e)
+    {
+        // Check if Shift key is held down
+        bool shiftHeld = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
+
+        if (shiftHeld)
+        {
+            // Run for all users in comboBoxUsers
+            var userNames = comboBoxUsers.Items.Cast<string>().Where(u => !string.IsNullOrWhiteSpace(u)).ToList();
+            if (userNames.Count == 0)
+            {
+                MessageBox.Show("No users found.", "No Users", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            int successCount = 0;
+            var errors = new List<string>();
+            foreach (var name in userNames)
+            {
+                var userFolder = Path.Combine(employeeFolderRoot, name);
+
+                // Prompt for each user
+                var promptMsg = $"Update core files and DataLinks for user '{name}'?\r\n\r\nUser folder:\r\n{userFolder}\r\n\r\nProceed?";
+                var userResult = MessageBox.Show(promptMsg, $"Update User: {name}", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (userResult != DialogResult.Yes)
+                {
+                    errors.Add($"{name}: Skipped by user.");
+                    continue;
+                }
+
+                try
+                {
+                    CopyLabelViewFoldersAndUpdateDataLinks(userFolder);
+                    successCount++;
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{name}: {ex.Message}");
+                }
+            }
+            string msg = $"Core files and DataLinks updated for {successCount} user(s).";
+            if (errors.Count > 0)
+                msg += "\r\nSome errors occurred:\r\n" + string.Join("\r\n", errors);
+            MessageBox.Show(msg, "Batch Update Complete", MessageBoxButtons.OK, errors.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+            return;
+        }
+
+        // Default: single user
+        if (comboBoxUsers.SelectedItem is not string userName || string.IsNullOrWhiteSpace(userName))
+        {
+            MessageBox.Show("Please select a user first.", "No User Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var singleUserFolder = Path.Combine(employeeFolderRoot, userName);
+
+        try
+        {
+            CopyLabelViewFoldersAndUpdateDataLinks(singleUserFolder);
+            MessageBox.Show("Core files and DataLinks updated successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error updating core files: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 }

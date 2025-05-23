@@ -80,6 +80,7 @@
             buttonOpenExcel = new Button();
             tabPageUserSync = new TabPage();
             panelUserSync = new Panel();
+            buttonUpdateCoreFiles = new Button();
             groupBoxNewUser.SuspendLayout();
             groupBoxUpdateUser.SuspendLayout();
             tabControlMain.SuspendLayout();
@@ -286,7 +287,7 @@
             // 
             buttonResetLabelVersion.Location = new Point(20, 631);
             buttonResetLabelVersion.Name = "buttonResetLabelVersion";
-            buttonResetLabelVersion.Size = new Size(740, 30);
+            buttonResetLabelVersion.Size = new Size(370, 30);
             buttonResetLabelVersion.TabIndex = 9;
             buttonResetLabelVersion.Text = "Reset all Labels to Version 1.0";
             buttonResetLabelVersion.Click += buttonResetLabelVersion_Click;
@@ -430,6 +431,7 @@
             // 
             // panelUserSync
             // 
+            panelUserSync.Controls.Add(buttonUpdateCoreFiles);
             panelUserSync.Controls.Add(comboBoxUsers);
             panelUserSync.Controls.Add(buttonSync);
             panelUserSync.Controls.Add(groupBoxNewUser);
@@ -445,6 +447,15 @@
             panelUserSync.Name = "panelUserSync";
             panelUserSync.Size = new Size(786, 666);
             panelUserSync.TabIndex = 0;
+            // 
+            // buttonUpdateCoreFiles
+            // 
+            buttonUpdateCoreFiles.Location = new Point(390, 631);
+            buttonUpdateCoreFiles.Name = "buttonUpdateCoreFiles";
+            buttonUpdateCoreFiles.Size = new Size(370, 30);
+            buttonUpdateCoreFiles.TabIndex = 10;
+            buttonUpdateCoreFiles.Text = "Update Core Files for User";
+            buttonUpdateCoreFiles.Click += buttonUpdateCoreFiles_Click;
             // 
             // MainForm
             // 
@@ -467,5 +478,6 @@
             panelUserSync.PerformLayout();
             ResumeLayout(false);
         }
+        private Button buttonUpdateCoreFiles;
     }
 }
