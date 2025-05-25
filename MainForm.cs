@@ -38,12 +38,82 @@ public partial class MainForm : Form
             }).ToList();
             SaveAllUserSettings(users);
         }
-        PopulateOpenLabelTab();
+        
         RefreshUserLists();
         comboBoxUsers.SelectedIndexChanged += comboBoxUsers_SelectedIndexChanged;
         comboBoxUpdateUser.SelectedIndexChanged += comboBoxUpdateUser_SelectedIndexChanged;
         UpdateStatusCheckboxes();
         UpdateUpdateUserCheckboxes();
+        PopulateOpenLabelTab();
+    }
+    private void UpdateOpenLabelAndExcelFiles()
+    {
+        listBoxLblFiles.Items.Clear();
+        listBoxExcelFiles.Items.Clear();
+
+        if (comboBoxOpenLabelUserFolder.SelectedItem is not string userName || string.IsNullOrWhiteSpace(userName))
+            return;
+        if (comboBoxCustomerFolders.SelectedItem is not string customerFolder || string.IsNullOrWhiteSpace(customerFolder))
+            return;
+
+        var userFolder = Path.Combine(employeeFolderRoot, userName);
+        var shippingPath = Path.Combine(userFolder, "Shipping", customerFolder);
+
+        // LABEL FILES
+        if (Directory.Exists(shippingPath))
+        {
+            var lblFiles = Directory.GetFiles(shippingPath, "*.lbl", SearchOption.AllDirectories)
+                .Where(f => !f.Split(Path.DirectorySeparatorChar).Contains("Backups") && !f.Split(Path.AltDirectorySeparatorChar).Contains("Backups"))
+                .ToArray();
+
+            foreach (var file in lblFiles)
+            {
+                var displayPath = $"{userName}/{Path.GetFileName(file)}";
+                listBoxLblFiles.Items.Add(displayPath);
+            }
+        }
+
+        // EXCEL FILES
+        var dataDir = Path.Combine(userFolder, "LabelView Folders", "Data");
+        if (Directory.Exists(dataDir))
+        {
+            var excelFiles = Directory.GetFiles(dataDir, "*.xls*", SearchOption.AllDirectories)
+                .Select(f => $"{userName}/{Path.GetFileName(f)}")
+                .OrderBy(f => f)
+                .ToArray();
+            listBoxExcelFiles.Items.AddRange(excelFiles);
+        }
+    }
+    private void comboBoxOpenLabelUserFolder_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (comboBoxOpenLabelUserFolder.SelectedItem is not string userFolder) return;
+        SaveOpenLabelSettings(userFolder);
+
+        // Always show the customer folders combobox
+        comboBoxCustomerFolders.Visible = true;
+
+        // Update customer folders as before
+        var shippingRoot = Path.Combine(employeeFolderRoot, userFolder, "Shipping");
+        comboBoxCustomerFolders.Items.Clear();
+
+        if (Directory.Exists(shippingRoot))
+        {
+            var customerFolders = Directory.GetDirectories(shippingRoot)
+                .Select(Path.GetFileName)
+                .Where(folder => !string.IsNullOrEmpty(folder))
+                .ToArray();
+            comboBoxCustomerFolders.Items.AddRange(customerFolders.Where(f => f != null).Cast<object>().ToArray());
+            if (comboBoxCustomerFolders.Items.Count > 0)
+                comboBoxCustomerFolders.SelectedIndex = 0;
+        }
+        else
+        {
+            UpdateOpenLabelAndExcelFiles();
+        }
+    }
+    private void comboBoxCustomerFolders_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        UpdateOpenLabelAndExcelFiles();
     }
     private static string? ExtractLabelVersion(string fileName)
     {
@@ -466,48 +536,6 @@ public partial class MainForm : Form
             MessageBox.Show("User deleted.", "Deleted", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
-    private void comboBoxOpenLabelUserFolder_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        if (comboBoxOpenLabelUserFolder.SelectedItem is not string userFolder) return;
-        SaveOpenLabelSettings(userFolder);
-
-        // Update customer folders as before
-        var shippingRoot = Path.Combine(employeeFolderRoot, userFolder, "Shipping");
-        comboBoxCustomerFolders.Items.Clear();
-        if (Directory.Exists(shippingRoot))
-        {
-            var customerFolders = Directory.GetDirectories(shippingRoot)
-                .Select(Path.GetFileName)
-                .Where(folder => !string.IsNullOrEmpty(folder))
-                .ToArray();
-            comboBoxCustomerFolders.Items.AddRange(customerFolders.Where(f => f != null).Cast<object>().ToArray());
-            if (comboBoxCustomerFolders.Items.Count > 0) comboBoxCustomerFolders.SelectedIndex = 0;
-        }
-        else { listBoxLblFiles.Items.Clear(); }
-
-        // Update Excel files to use the new Data folder
-        listBoxExcelFiles.Items.Clear();
-        var dataDir = Path.Combine(employeeFolderRoot, userFolder, "LabelView Folders", "Data");
-        if (Directory.Exists(dataDir))
-        {
-            var excelFiles = Directory.GetFiles(dataDir, "*.xls*", SearchOption.AllDirectories)
-                .Select(f => Path.GetRelativePath(dataDir, f)).OrderBy(f => f).ToArray();
-            listBoxExcelFiles.Items.AddRange(excelFiles);
-        }
-    }
-    private void comboBoxCustomerFolders_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        listBoxLblFiles.Items.Clear();
-        if (comboBoxOpenLabelUserFolder.SelectedItem is not string userFolder) return;
-        if (comboBoxCustomerFolders.SelectedItem is not string customerFolder) return;
-        var shippingPath = Path.Combine(employeeFolderRoot, userFolder, "Shipping", customerFolder);
-        if (!Directory.Exists(shippingPath)) return;
-        var lblFiles = Directory.GetFiles(shippingPath, "*.lbl", SearchOption.AllDirectories)
-            .Where(f => !f.Split(Path.DirectorySeparatorChar).Contains("Backups") && !f.Split(Path.AltDirectorySeparatorChar).Contains("Backups"))
-            .ToArray();
-        foreach (var file in lblFiles)
-            listBoxLblFiles.Items.Add(Path.GetRelativePath(shippingPath, file));
-    }
     private void buttonResetLabelVersion_Click(object sender, EventArgs e)
     {
         var prompt = "Enter PIN to reset all label file versions to 1.0.\n(Hint: Creator's PC PIN)";
@@ -521,7 +549,7 @@ public partial class MainForm : Form
         if (confirm == DialogResult.Yes)
         {
             Cursor.Current = Cursors.WaitCursor;
-            try { ResetAllLabelFileVersionsTo1_0(); MessageBox.Show("All label file versions have been reset to 1.0.", "Operation Complete", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+            try { ResetAllLabelFileVersionsTo1(); MessageBox.Show("All label file versions have been reset to 1.0.", "Operation Complete", MessageBoxButtons.OK, MessageBoxIcon.Information); }
             catch (Exception ex) { MessageBox.Show($"Error during version reset:\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
             finally { Cursor.Current = Cursors.Default; }
         }
@@ -530,24 +558,37 @@ public partial class MainForm : Form
     private void buttonOpenLbl_Click(object? sender, EventArgs e) => OpenSelectedLblFile();
     private void OpenSelectedLblFile()
     {
-        if (comboBoxCustomerFolders.SelectedItem is not string customerFolder) return;
-        if (listBoxLblFiles.SelectedItem is not string relPath) return;
-        var shippingPath = Path.Combine(masterFolder, "Shipping", customerFolder);
-        var fullPath = Path.Combine(shippingPath, relPath);
-        if (File.Exists(fullPath))
+        if (comboBoxOpenLabelUserFolder.SelectedItem is not string userName || string.IsNullOrWhiteSpace(userName))
+            return;
+        if (comboBoxCustomerFolders.SelectedItem is not string customerFolder || string.IsNullOrWhiteSpace(customerFolder))
+            return;
+        if (listBoxLblFiles.SelectedItem is not string relPath)
+            return;
+        var fileName = relPath[(relPath.IndexOf('/') + 1)..]; // get just the file name
+        var filePath = Path.Combine(employeeFolderRoot, userName, "Shipping", customerFolder, fileName);
+
+        if (File.Exists(filePath))
         {
-            Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
+        }
+        else
+        {
+            MessageBox.Show($"File not found:\n{filePath}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
     private void listBoxExcelFiles_DoubleClick(object? sender, EventArgs e) => OpenSelectedExcelFile();
     private void buttonOpenExcel_Click(object? sender, EventArgs e) => OpenSelectedExcelFile();
     private void OpenSelectedExcelFile()
     {
-        if (comboBoxOpenLabelUserFolder.SelectedItem is not string userFolder) return;
-        if (listBoxExcelFiles.SelectedItem is not string relPath) return;
-        var dataDir = Path.Combine(employeeFolderRoot, userFolder, "LabelView Folders", "Data");
-        var fullPath = Path.Combine(dataDir, relPath);
-        if (File.Exists(fullPath))
+        if (comboBoxOpenLabelUserFolder.SelectedItem is not string userName || string.IsNullOrWhiteSpace(userName))
+            return;
+        if (listBoxExcelFiles.SelectedItem is not string relPath)
+            return;
+
+        var fileName = relPath[(relPath.IndexOf('/') + 1)..]; // get just the file name
+        var filePath = Path.Combine(employeeFolderRoot, userName, "LabelView Folders", "Data", fileName);
+
+        if (File.Exists(filePath))
         {
             var msg =
                 "Please let John Koll know you are editing this Excel file so he can sync your changes with other users.\r\n\r\n" +
@@ -561,10 +602,14 @@ public partial class MainForm : Form
             );
             if (result == DialogResult.OK)
             {
-                Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
                 Close();
             }
             // else: do nothing, user cancelled
+        }
+        else
+        {
+            MessageBox.Show($"File not found:\n{filePath}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
     private void PopulateOpenLabelTab()
@@ -765,7 +810,7 @@ public partial class MainForm : Form
         }
         return filesToSync;
     }
-    private void ResetAllLabelFileVersionsTo1_0()
+    private void ResetAllLabelFileVersionsTo1()
     {
         void RenameShippingLblFilesInDirectory(string rootDir, List<string> openSkipped, ref int versionSkipped, ref int successCount)
         {
@@ -860,7 +905,6 @@ public partial class MainForm : Form
         else report.AppendLine(string.Join("\r\n", openSkipped));
         textBoxReport.Text = report.ToString();
     }
-
     private void CopyLabelViewFoldersAndUpdateDataLinks(string userFolder)
     {
         var masterLabelView = Path.Combine(masterFolder, "LabelView Folders");
@@ -994,7 +1038,6 @@ public partial class MainForm : Form
             MessageBox.Show("Core files and DataLinks updated successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
-
     private void buttonUpdateCoreFiles_Click(object sender, EventArgs e)
     {
         // Check if Shift key is held down
@@ -1061,4 +1104,5 @@ public partial class MainForm : Form
             MessageBox.Show($"Error updating core files: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
+
 }
