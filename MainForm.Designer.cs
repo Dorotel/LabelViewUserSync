@@ -80,6 +80,7 @@
             buttonOpenExcel = new Button();
             tabPageUserSync = new TabPage();
             panelUserSync = new Panel();
+            button1 = new Button();
             buttonUpdateCoreFiles = new Button();
             groupBoxNewUser.SuspendLayout();
             groupBoxUpdateUser.SuspendLayout();
@@ -278,9 +279,9 @@
             // 
             buttonUpdateUserSettings.Location = new Point(20, 595);
             buttonUpdateUserSettings.Name = "buttonUpdateUserSettings";
-            buttonUpdateUserSettings.Size = new Size(740, 30);
+            buttonUpdateUserSettings.Size = new Size(370, 30);
             buttonUpdateUserSettings.TabIndex = 8;
-            buttonUpdateUserSettings.Text = "Update Settings for Selected User";
+            buttonUpdateUserSettings.Text = "Set Current User to This PC";
             buttonUpdateUserSettings.Click += buttonUpdateUserSettings_Click;
             // 
             // buttonResetLabelVersion
@@ -431,6 +432,7 @@
             // 
             // panelUserSync
             // 
+            panelUserSync.Controls.Add(button1);
             panelUserSync.Controls.Add(buttonUpdateCoreFiles);
             panelUserSync.Controls.Add(comboBoxUsers);
             panelUserSync.Controls.Add(buttonSync);
@@ -447,6 +449,15 @@
             panelUserSync.Name = "panelUserSync";
             panelUserSync.Size = new Size(786, 666);
             panelUserSync.TabIndex = 0;
+            // 
+            // button1
+            // 
+            button1.Location = new Point(390, 595);
+            button1.Name = "button1";
+            button1.Size = new Size(370, 30);
+            button1.TabIndex = 11;
+            button1.Text = "Validate User.ini for all Users";
+            button1.Click += VerifyAllUserIniFiles;
             // 
             // buttonUpdateCoreFiles
             // 
@@ -479,5 +490,6 @@
             ResumeLayout(false);
         }
         private Button buttonUpdateCoreFiles;
+        private Button button1;
     }
 }
