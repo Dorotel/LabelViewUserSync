@@ -465,7 +465,7 @@
             Controls.Add(tabControlMain);
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "MainForm";
-            Text = "LabelView User Sync";
+            Text = "LabelSync Hub";
             groupBoxNewUser.ResumeLayout(false);
             groupBoxNewUser.PerformLayout();
             groupBoxUpdateUser.ResumeLayout(false);

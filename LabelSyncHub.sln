@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.13.35919.96 d17.13
+VisualStudioVersion = 17.13.35919.96
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LabelViewUserSync", "LabelViewUserSync.csproj", "{5475C41F-3FDE-4F22-AAED-4CAAB0E69A92}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LabelSyncHub", "LabelSyncHub.csproj", "{5475C41F-3FDE-4F22-AAED-4CAAB0E69A92}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
